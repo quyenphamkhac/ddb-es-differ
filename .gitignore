@@ -1,0 +1,23 @@
+# Node.js
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Local development
+.env
+
+# Dependency directories
+pnpify/
+.pnp/
+.pnp.js
+
+# Optional: if using TypeScript
+tsconfig.tsbuildinfo
+
+# Editor directories and files
+.vscode/
+.idea/
+
+# OS generated files
+.DS_Store
+Thumbs.db
