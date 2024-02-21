@@ -16,16 +16,7 @@ const esClient = new elasticsearch.Client({
 
 const docClient = new AWS.DynamoDB.DocumentClient();
 
-const indexName = "list";
-const batchSize = 100;
-
-const ids = [
-  "d4f47bc1-c3e5-4e2b-990b-293bbf4358db",
-  "461f7a7a-3418-41e0-8eec-f27a1f26d1e7",
-  "17f83eae-ea86-485c-b545-8b9bcd3da021",
-];
-
-async function getDocumentsByIds(indexName, ids) {
+async function getDocumentsByIds(indexName, ids, limit) {
   try {
     const query = {
       query: {
@@ -33,6 +24,8 @@ async function getDocumentsByIds(indexName, ids) {
           id: ids,
         },
       },
+      from: 0,
+      size: limit,
       _source: ["id"],
     };
     const response = await esClient.search({
@@ -40,41 +33,11 @@ async function getDocumentsByIds(indexName, ids) {
       body: query,
     });
     const hits = response.hits.hits;
-    const docs = hits.map((hit) => hit._source);
-    return docs;
+    const docIds = hits.map((hit) => hit._source.id);
+    return docIds;
   } catch (error) {
     console.error("Error querying Elasticsearch:", error);
   }
-}
-
-async function scanTableWithPagination() {
-  let lastEvaluatedKey = null;
-  do {
-    const params = {
-      TableName: tableName,
-      ProjectionExpression: projectionExpression,
-      ExclusiveStartKey: lastEvaluatedKey,
-    };
-
-    try {
-      const data = await docClient.scan(params).promise();
-
-      // Access the items from the response
-      const items = data.Items;
-
-      // Process the items as needed
-      items.forEach((item) => {
-        console.log(item);
-      });
-
-      // Update LastEvaluatedKey for the next iteration
-      lastEvaluatedKey = data.LastEvaluatedKey;
-    } catch (err) {
-      console.error("Error scanning table:", err);
-      throw err;
-    }
-  } while (lastEvaluatedKey);
-  console.log("Scan completed.");
 }
 
 async function queryResourceIdsWithPagination(
@@ -114,22 +77,48 @@ async function queryResourceIdsWithPagination(
   }
 }
 
+function getArrayDifference(array1, array2) {
+  const set1 = new Set(array1);
+
+  const difference = [];
+
+  for (const item of array2) {
+    if (!set1.has(item)) {
+      difference.push(item);
+    }
+  }
+
+  return difference;
+}
+
 const start = async function () {
-  const ddbIndexName = "resourceType-id-index";
+  const args = process.argv.slice(2);
+  if (args.length < 1) {
+    console.info("Please provide a FHIR resource type to run this script.");
+    return;
+  }
+  const [resourceType] = args;
+  console.info("FHIR Resource Type: ", resourceType);
+  const limit = 100;
+  const ddbIndexName = process.env.AWS_DDB_INDEXNAME;
   const tableName = process.env.AWS_DDB_TABLENAME;
-  const ids = await queryResourceIdsWithPagination(
+  const ddbDocIds = await queryResourceIdsWithPagination(
     tableName,
     ddbIndexName,
-    "Encounter",
-    10,
+    resourceType,
+    limit,
     null
   );
-  console.log(ids);
-  const esIndexName = "encounter";
-  const docs = await getDocumentsByIds(esIndexName, ids);
-  docs.forEach((doc) => {
-    console.log(doc);
-  });
+  console.log("DDB", ddbDocIds.length);
+
+  // Elasticsearch Index Name is FHIR Resource Type lowercase
+  const esIndexName = resourceType.toLowerCase();
+  const esDocIds = await getDocumentsByIds(esIndexName, ddbDocIds, limit);
+  console.log("ES", esDocIds.length);
+
+  const diffIds = getArrayDifference(esDocIds, ddbDocIds);
+  // Show missing data ids
+  console.log("DIFF", diffIds);
 };
 
 start();
