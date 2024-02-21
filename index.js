@@ -99,7 +99,7 @@ const start = async function () {
   }
   const [resourceType] = args;
   console.info("FHIR Resource Type: ", resourceType);
-  const limit = 100;
+  const limit = 1000;
   const ddbIndexName = process.env.AWS_DDB_INDEXNAME;
   const tableName = process.env.AWS_DDB_TABLENAME;
   const ddbDocIds = await queryResourceIdsWithPagination(
