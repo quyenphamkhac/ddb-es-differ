@@ -65,14 +65,7 @@ async function queryResourceIdsWithPagination(
   try {
     const data = await docClient.query(params).promise();
 
-    // Access the items from the response
-    const items = data.Items;
-
-    // Process the items as needed
-    const ids = items.map((item) => {
-      return item.id;
-    });
-    return ids;
+    return data;
   } catch (err) {
     console.error("Error querying table:", err);
   }
@@ -137,7 +130,7 @@ async function updateMetaField(tableName, idValue, vidValue) {
       ReturnValues: "NONE",
     };
 
-    const updateResult = await docClient.update(updateParams).promise();
+    await docClient.update(updateParams).promise();
     console.log("Updated document:", idValue, vidValue);
   } catch (error) {
     console.error("Error updating document:", error);
@@ -173,26 +166,51 @@ const start = async function () {
   const limit = 2000;
   const ddbIndexName = process.env.AWS_DDB_INDEXNAME;
   const tableName = process.env.AWS_DDB_TABLENAME;
-  const ddbDocIds = await queryResourceIdsWithPagination(
+  let queryResponse = await queryResourceIdsWithPagination(
     tableName,
     ddbIndexName,
     resourceType,
     limit,
     null
   );
-  console.log("DDB", ddbDocIds.length);
+  let ddbDocIds = queryResponse.Items.map((item) => item.id);
+  console.log("DynamoDB documents: ", ddbDocIds.length);
+  let lastEvaluatedKey = queryResponse.LastEvaluatedKey;
+  let counter = 0;
+  try {
+    while (lastEvaluatedKey) {
+      counter = counter + 1;
+      console.log(`FHIR Resource Type ${resourceType}
+        Step ${counter + 1} is excuting. 
+        Total documents: ${counter * limit}
+        LastEvaluatedKey: ${lastEvaluatedKey}`);
+      queryResponse = await queryResourceIdsWithPagination(
+        tableName,
+        ddbIndexName,
+        resourceType,
+        limit,
+        lastEvaluatedKey
+      );
+      ddbDocIds = queryResponse.Items.map((item) => item.id);
+      console.log("DynamoDB documents: ", ddbDocIds.length);
+      lastEvaluatedKey = queryResponse.LastEvaluatedKey;
 
-  // Elasticsearch Index Name is FHIR Resource Type lowercase
-  const esIndexName = resourceType.toLowerCase();
-  const esDocIds = await getDocumentsByIds(esIndexName, ddbDocIds, limit);
-  console.log("ES", esDocIds.length);
+      // Elasticsearch Index Name is FHIR Resource Type lowercase
+      const esIndexName = resourceType.toLowerCase();
+      const esDocIds = await getDocumentsByIds(esIndexName, ddbDocIds, limit);
+      console.log("Elasticsearch documents: ", esDocIds.length);
 
-  const diffIds = getArrayDifference(esDocIds, ddbDocIds);
-  // Show missing data ids
-  console.log("DIFF", diffIds);
-  const archiveFilePath = `archive/${resourceType}-diff.txt`;
-  writeIdsToFile(diffIds, archiveFilePath);
-  await updateMetaFields(tableName, diffIds);
+      const diffIds = getArrayDifference(esDocIds, ddbDocIds);
+      // Show missing data ids
+      console.log("Missed ids: ", diffIds);
+      const archiveFilePath = `archive/${resourceType}-diff.txt`;
+      writeIdsToFile(diffIds, archiveFilePath);
+      await updateMetaFields(tableName, diffIds);
+    }
+  } catch (error) {
+    console.log("current Evaluated Key", queryParams.ExclusiveStartKey);
+    console.error(error);
+  }
 };
 
 start();
