@@ -225,7 +225,7 @@ const start = async function () {
       await updateMetaFields(tableName, diffIds);
     }
   } catch (error) {
-    console.log("current Evaluated Key", queryParams.ExclusiveStartKey);
+    console.log("current Evaluated Key", lastEvaluatedKey);
     console.error(error);
   }
 };
