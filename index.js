@@ -1,5 +1,6 @@
 const AWS = require("aws-sdk");
 const elasticsearch = require("elasticsearch");
+const fs = require("fs");
 require("dotenv").config();
 
 AWS.config.credentials = new AWS.SharedIniFileCredentials({
@@ -91,6 +92,76 @@ function getArrayDifference(array1, array2) {
   return difference;
 }
 
+async function updateMetaField(tableName, idValue, vidValue) {
+  // Get the document by primary key
+  const getParams = {
+    TableName: tableName,
+    Key: {
+      id: idValue,
+      vid: vidValue,
+    },
+    ProjectionExpression: "id, vid, meta",
+  };
+
+  try {
+    const getResult = await docClient.get(getParams).promise();
+
+    if (!getResult.Item) {
+      console.error("Document not found");
+      return;
+    }
+
+    console.log(getResult.Item);
+
+    // Update the meta field with a new lastUpdated timestamp
+    const newMeta = {
+      ...getResult.Item.meta, // Keep the existing versionId
+      lastUpdated: new Date().toISOString(),
+    };
+    console.log(newMeta);
+
+    // Update the document with the new meta field
+    const updateParams = {
+      TableName: tableName,
+      Key: {
+        id: idValue,
+        vid: vidValue,
+      },
+      UpdateExpression: "SET #meta = :newMeta",
+      ExpressionAttributeNames: {
+        "#meta": "meta",
+      },
+      ExpressionAttributeValues: {
+        ":newMeta": newMeta,
+      },
+      ReturnValues: "NONE",
+    };
+
+    const updateResult = await docClient.update(updateParams).promise();
+    console.log("Updated document:", idValue, vidValue);
+  } catch (error) {
+    console.error("Error updating document:", error);
+  }
+}
+
+async function updateMetaFields(tableName, ids) {
+  for (let index = 0; index < ids.length; index++) {
+    const id = ids[index];
+    await updateMetaField(tableName, id, 1);
+  }
+}
+
+function writeIdsToFile(ids, filePath) {
+  const dataToWrite = ids.join("\n") + "\n";
+
+  fs.appendFile(filePath, dataToWrite, (err) => {
+    if (err) {
+      console.error("Error writing to file:", err);
+    } else {
+      console.log("IDs written to file successfully!");
+    }
+  });
+}
 const start = async function () {
   const args = process.argv.slice(2);
   if (args.length < 1) {
@@ -119,6 +190,9 @@ const start = async function () {
   const diffIds = getArrayDifference(esDocIds, ddbDocIds);
   // Show missing data ids
   console.log("DIFF", diffIds);
+  const archiveFilePath = `archive/${resourceType}-diff.txt`;
+  writeIdsToFile(diffIds, archiveFilePath);
+  await updateMetaFields(tableName, diffIds);
 };
 
 start();

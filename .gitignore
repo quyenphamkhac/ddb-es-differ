@@ -21,3 +21,5 @@ tsconfig.tsbuildinfo
 # OS generated files
 .DS_Store
 Thumbs.db
+
+archive/*
