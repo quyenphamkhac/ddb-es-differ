@@ -166,12 +166,18 @@ const start = async function () {
   const limit = 2000;
   const ddbIndexName = process.env.AWS_DDB_INDEXNAME;
   const tableName = process.env.AWS_DDB_TABLENAME;
+  let currentlastEvaluatedKey = null;
+  // let currentlastEvaluatedKey = {
+  //   id: "61c3edfe-f558-4d1a-971f-fdeeaf1e9646",
+  //   vid: 1,
+  //   resourceType: "Observation",
+  // };
   let queryResponse = await queryResourceIdsWithPagination(
     tableName,
     ddbIndexName,
     resourceType,
     limit,
-    null
+    currentlastEvaluatedKey
   );
   let ddbDocIds = queryResponse.Items.map((item) => item.id);
   console.log("DynamoDB documents: ", ddbDocIds.length);
@@ -194,6 +200,7 @@ const start = async function () {
         Step ${counter + 1} is excuting. 
         Total documents: ${counter * limit}
         LastEvaluatedKey: ${lastEvaluatedKey}`);
+      console.log("LastEvaluatedKey", lastEvaluatedKey);
       queryResponse = await queryResourceIdsWithPagination(
         tableName,
         ddbIndexName,
