@@ -177,6 +177,16 @@ const start = async function () {
   console.log("DynamoDB documents: ", ddbDocIds.length);
   let lastEvaluatedKey = queryResponse.LastEvaluatedKey;
   let counter = 0;
+  const esIndexName = resourceType.toLowerCase();
+  const esDocIds = await getDocumentsByIds(esIndexName, ddbDocIds, limit);
+  console.log("Elasticsearch documents: ", esDocIds.length);
+
+  const diffIds = getArrayDifference(esDocIds, ddbDocIds);
+  // Show missing data ids
+  console.log("Missed ids: ", diffIds);
+  const archiveFilePath = `archive/${resourceType}-diff.txt`;
+  writeIdsToFile(diffIds, archiveFilePath);
+  await updateMetaFields(tableName, diffIds);
   try {
     while (lastEvaluatedKey) {
       counter = counter + 1;
